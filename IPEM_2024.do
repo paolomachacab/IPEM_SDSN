@@ -264,4 +264,141 @@ gen _ipem_m0 = c_vector * _ipem_h
 gen _ipem_a  = c_vector if _ipem_h == 1
 
 label var _ipem_h  "Hogar pobre energético (k=0.30)"
-label var _ipem_e  "H"
+label var _ipem_e  "Hogar pobre energético extremo (k=0.70)"
+label var _ipem_m0 "Privación censurada (M0)"
+label var _ipem_a  "Intensidad (A) - solo pobres"
+
+********************************************************************************
+* RESULTADOS NIVEL NACIONAL
+********************************************************************************
+
+count if _ipem_h == 1
+local q = r(N)
+count if !missing(c_vector)
+local n = r(N)
+local H  = (`q'  / `n') * 100
+
+count if _ipem_e == 1
+local qe = r(N)
+local He = (`qe' / `n') * 100
+
+summarize _ipem_a
+local A    = r(mean) * 100
+local IPEM = (`H' * `A') / 100
+
+display "════════════════════════════════════════════"
+display "  IPEM 2024 - NIVEL NACIONAL"
+display "════════════════════════════════════════════"
+display "  Incidencia  H  (k≥0.30): " %6.2f `H'   " %"
+display "  Incidencia  He (k≥0.70): " %6.2f `He'  " %"
+display "  Intensidad  A          : " %6.2f `A'   " %"
+display "  IPEM = H × A           : " %6.3f `IPEM'
+display "════════════════════════════════════════════"
+
+********************************************************************************
+* RESULTADOS POR ÁREA URBANO/RURAL
+********************************************************************************
+
+preserve
+collapse ///
+    (count) n_obs      = c_vector ///
+    (sum)   sum_pobres = _ipem_h  ///
+    (mean)  mean_a     = _ipem_a, ///
+    by(urbrur)
+
+gen H    = (sum_pobres / n_obs) * 100
+gen A    = mean_a * 100
+gen IPEM = (H * A) / 100
+
+label define area 1 "Urbano" 2 "Rural"
+label values urbrur area
+
+display "════════════════════════════════════════════"
+display "  IPEM 2024 - POR ÁREA"
+display "════════════════════════════════════════════"
+list urbrur H A IPEM, noobs clean
+display "════════════════════════════════════════════"
+restore
+
+********************************************************************************
+* RESULTADOS POR MUNICIPIO
+********************************************************************************
+
+preserve
+gen uno = 1
+
+collapse ///
+    (mean)  H       = _ipem_h ///
+    (mean)  A       = _ipem_a ///
+    (count) hogares = uno,    ///
+    by(ID_INE_CENSO_MUN)
+
+gen IPEM = H * A
+
+label var H       "Incidencia (H)"
+label var A       "Intensidad (A)"
+label var IPEM    "IPEM = H × A"
+label var hogares "Número de hogares"
+
+sort ID_INE_CENSO_MUN
+
+save "$out/ipem_municipal_2024.dta", replace
+export delimited using "$out/ipem_municipal_2024.csv", replace
+export excel using "$out/ipem_municipal_2024.xlsx", replace firstrow(variables)
+
+display "════════════════════════════════════════════"
+display "  TOP 10 MUNICIPIOS MÁS POBRES - 2024"
+display "════════════════════════════════════════════"
+gsort -IPEM
+list ID_INE_CENSO_MUN H A IPEM in 1/10, noobs clean
+restore
+
+********************************************************************************
+* PROPORCIÓN DE PRIVACIÓN POR INDICADOR Y MUNICIPIO
+********************************************************************************
+
+foreach var in combustible indoor electricidad ///
+               entretenimiento comunicacion digital {
+    bys ID_INE_CENSO_MUN: egen total_dep_`var' = total(dep_`var')
+    bys ID_INE_CENSO_MUN: egen total_hog_`var' = total(!missing(dep_`var'))
+    gen prop_`var' = (total_dep_`var' / total_hog_`var') * 100
+    label var prop_`var' "% hogares privados: `var'"
+    drop total_dep_`var' total_hog_`var'
+}
+
+preserve
+collapse (mean) prop_*, by(ID_INE_CENSO_MUN)
+foreach var of varlist prop_* {
+    replace `var' = round(`var', 0.01)
+}
+sort ID_INE_CENSO_MUN
+save "$out/prop_ipem_municipal_2024.dta", replace
+export delimited using "$out/prop_ipem_municipal_2024.csv", replace
+restore
+
+********************************************************************************
+* CONTRIBUCIÓN DE CADA INDICADOR AL IPEM NACIONAL
+********************************************************************************
+
+summarize _ipem_m0
+local M0_total = r(mean)
+
+display "════════════════════════════════════════════"
+display "  CONTRIBUCIÓN DE INDICADORES AL IPEM 2024"
+display "════════════════════════════════════════════"
+foreach ind in combustible indoor electricidad ///
+               entretenimiento comunicacion digital {
+    gen _contrib_`ind' = g0_`ind' * _ipem_h
+    summarize _contrib_`ind'
+    local contrib = (r(mean) / `M0_total') * 100
+    display "  `ind': " %5.1f `contrib' " %"
+    drop _contrib_`ind'
+}
+display "════════════════════════════════════════════"
+
+********************************************************************************
+* GUARDAR BASE FINAL
+********************************************************************************
+
+save "$out/base_ipem_2024_final.dta", replace
+display "✓ Código IPEM 2024 completado exitosamente"
