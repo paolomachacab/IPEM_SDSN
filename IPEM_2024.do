@@ -26,7 +26,7 @@ use "$out/persona_vivienda_censo_2024", clear
 ********************************************************************************
 * FILTRAR VIVIENDAS PARTICULARES Y QUEDARSE CON UNA FILA POR VIVIENDA
 ********************************************************************************
-keep if inrange(P01_TIPOVIV, 1, 5)
+keep if inrange(v01_tipoviv, 1, 6)
 
 ********************************************************************************
 * ETIQUETA GENERAL
@@ -105,10 +105,10 @@ tab dep_indoor, missing
 *---------------------------------------------------------------------------
 /*
 v09_energia – De dónde proviene la energía eléctrica
-    1 Red de empresa eléctrica → NO PRIVADO
-    2 Panel solar              → NO PRIVADO
-    3 Generador/Turbina        → NO PRIVADO
-    4 Otra fuente              → NO PRIVADO
+    1 Servicio público de enérgia eléctrica → NO PRIVADO
+    2 Motor propio (generador)        → NO PRIVADO
+    3 Panel solar       → NO PRIVADO
+    4 Otro             → NO PRIVADO
     5 No tiene                 → PRIVADO
 */
 
