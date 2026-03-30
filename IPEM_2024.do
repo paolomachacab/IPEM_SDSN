@@ -27,7 +27,6 @@ use "$out/persona_vivienda_censo_2024", clear
 * FILTRAR VIVIENDAS PARTICULARES Y QUEDARSE CON UNA FILA POR VIVIENDA
 ********************************************************************************
 keep if inrange(P01_TIPOVIV, 1, 5)
-bys I_BC_VIV: keep if _n == 1
 
 ********************************************************************************
 * ETIQUETA GENERAL
