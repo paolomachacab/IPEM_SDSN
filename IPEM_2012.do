@@ -104,10 +104,10 @@ tab dep_indoor, missing
 *---------------------------------------------------------------------------
 /*
 P11_ENERGIA – De dónde proviene la energía eléctrica
-    1 Red de empresa eléctrica → NO PRIVADO
-    2 Panel solar              → NO PRIVADO
-    3 Generador/Turbina        → NO PRIVADO
-    4 Otra fuente              → NO PRIVADO
+    1 Red de empresa eléctrica (servicio público)→ NO PRIVADO
+    2 Motor propio              → NO PRIVADO
+    3 Panel solar       → NO PRIVADO
+    4 Otra               → NO PRIVADO
     5 No tiene                 → PRIVADO
 */
 
