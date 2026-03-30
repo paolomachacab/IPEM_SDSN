@@ -1,597 +1,267 @@
-****************************************************************************
-***** SDSN 2025 *****
-****************************************************************************
+********************************************************************************
+***** IPEM 2024 - ÍNDICE DE POBREZA ENERGÉTICA MULTIDIMENSIONAL
+***** Metodología: Alkire-Foster | Corte: k = 0.30
+***** Referencia: Nussbaumer et al. (2012), Bajpayee & Mohanty (2026),
+*****             Koirala & Rahut (2024), SDSN Bolivia (2026)
+********************************************************************************
 
-* Organización:	SDSN
-* Objetivo:	Generar el indicador de IPM a partir del censo 2024
-* Fecha: Octubre, 2025
-* Revisado por:	Paolo Machacay Fabiana Argandoña
-* Elaborado por: Bruna Torrico
-* Comentarios a: brunatorriale@gmail.com
-****************************************************************************
-****************************************************************************
-clear all 
+********************************************************************************
+* CONFIGURACIÓN
+********************************************************************************
+clear all
 set more off
 version 17.0
-******************************************************************************
 
-if ("`c(username)'" == "BRUNA") { // Bruna Torrico (laptop)
-	global path	"C:\Bruna\sdsn"
-	global in 	"$path/_in"
-	global out  "$path/_out"
-	global code "$path/_code"
-	global tbl	"$path/_tbl"
-	global graph  "$path/_graph"
+if ("`c(username)'" == "Paolo") {
+    global path  "C:\Paolo\ipm_2012_sdsn"
+    global in    "$path/_in"
+    global out   "$path/_out"
+    global code  "$path/_code"
+    global tbl   "$path/_tbl"
+    global graph "$path/_graph"
 }
-******************************************************************************
-* Realizar el merge entre base personas y base vivienda
-use "$out/personas_vivienda_censo_2024", replace*
 
-* Creación devariable que distingue a las viviendas particulares
-cap drop particular		
-gen particular=.
-replace particular =1 if inlist(v01_tipoviv,1,2,3,4,5,6)   
-replace particular =0 if inlist(v01_tipoviv,7,8,9,10,11,12,13,14,15,16)	
-
-keep if particular==1
-
-****************************************************************************
-* Creación de 9 indicadores 
-****************************************************************************
-
-****************************************************************************
-* Dimensión: Poder y voz
-****************************************************************************
-*---------------------------------------------------------------------------
-* 1. Analfabetismo
-*----------------------------------------------------------------------------
-/*	*P40_LEE  40.   Sabe leer y escribir
-	1	Sí
-    2	No */
-
-* 1) Variable individual: 1 si persona tiene 15+ años y no sabe leer
-cap drop analfabetismo_ind
-gen analfabetismo_ind = .
-replace analfabetismo_ind = 1 if p26_edad >= 15 & p40_lee == 2
-replace analfabetismo_ind = 0 if p26_edad >= 15 & p40_lee == 1
-
-replace analfabetismo_ind = 0 if p26_edad <15 
-
-	
-* 2) Variable a nivel hogar: 1 si al menos una persona del hogar tiene analfabetismo_ind==1
-cap drop analfabetismo_hogar
-bysort i00: egen analfabetismo_hogar = max(analfabetismo_ind)
-
-	
-* Crear labels
-label var analfabetismo_hogar "Privación por analfabetismo (1=privado)"
-label define priv_label 0 "No privación" 1 "Privación"
-label values analfabetismo_hogar priv_label
-
-* Revisar la tabulación
-tab analfabetismo_hogar,m 
-
-*---------------------------------------------------------------------------
-* 2. Documento de identidad
-*---------------------------------------------------------------------------
-/*P29_CI  29.   Tiene o tuvo cédula de identidad boliviana
-	1	Sí
-	2	No
-	3	Cédula Boliviana de extranjero
-	9	Sin especificar */
-
-* 1) Variable individual: 1 si persona tiene 6+ años y no tiene carnet de identidad
-cap drop sin_carnet_ind
-gen sin_carnet_ind = .
-replace sin_carnet_ind =1 if p26_edad >= 6 & p29_ci == 2
-replace sin_carnet_ind =0 if p26_edad >= 6 & inlist(p29_ci,1,3) 
-replace sin_carnet_ind =0 if p26_edad < 6
-	
-* 2) Variable a nivel hogar: 1 si al menos una persona del hogar tiene analfabetismo_ind==1
-cap drop sin_carnet_hogar
-bysort i00: egen sin_carnet_hogar = max(sin_carnet_ind)
-
-* Crear labels
-label var sin_carnet_hogar "Privación en documento de identidad (1=privado)"
-label define carnet_label 0 "No privación" 1 "Privación"
-label values sin_carnet_hogar carnet_label
-
-* Revisar la tabulación
-tab sin_carnet_hogar,m 
-
-*---------------------------------------------------------------------------
-* 3. Comunicación 
-*---------------------------------------------------------------------------
-*sección de vivienda
-/*  *V19D_CELULAR   19.4. Su hogar tiene: Teléfono celular
-	*V19H_TELFIJO 19.8. Su hogar tiene: Servicio de telefonía fija
-1	Sí
-2	No
-9	Sin especificar */
-
-cap drop priv_comunicacion
-gen priv_comunicacion = .
-replace priv_comunicacion = 1 if (v19d_celular == 2 | v19h_telfijo==2) 
-replace priv_comunicacion = 0 if v19d_celular == 1 | v19h_telfijo == 1
-
-* Crear labels
-label var priv_comunicacion "Privación por analfabetismo (1=privado)"
-label define priv_comunicacion_label 0 "No privación" 1 "Privación"
-label values priv_comunicacion priv_comunicacion_label
-
-* Revisar la tabulación
-tab priv_comunicacion,m 
-
-	
-****************************************************************************
-* Dimensión: Oportunidades y elección
-****************************************************************************
-*--------------------------------------------------------------------------
-* 4. Salud (parto no atendido en un centro de salud)
-*---------------------------------------------------------------------------    
-
-*--------------------------------------------------------*
-* Variable que identifica los últimos 5 años 
-replace p57b_uhnacan = . if p57b_uhnacan == 9999
-
-cap drop ult_año
-gen ult_año=2024
-
-cap drop ult5años
-gen ult5años = ult_año-p57b_uhnacan<5 if !missing(p57b_uhnacan)
-tabstat p57b_uhnacan if ult5años==1, stats(max min mean)
-*--------------------------------------------------------*
-
-* 1) Variable que identifica los partos atendidos por personal calificado
-cap drop priv_parto
-gen priv_parto = .
-replace priv_parto = 0 if ult5años==1 & (p26_edad >=15 & p26_edad <=59)  & p25_sexo==1 & inlist(p59_atparto,1,2,3) 
-		
-* Privadas las mujeres que no fueron atendidas por personal calificado y su parto fue en los últimos 5 años	
-replace priv_parto = 1 if ult5años==1 & (p26_edad >=15 & p26_edad <=59)  & p25_sexo==1 & inlist(p59_atparto,4,5,6,7,8) 
-
-* No privadas las mujeres que no fueron atendidas por personal calificado y su parto no fue en los últimos 5 años 	
-replace priv_parto = 0 if ult5años==0 & inlist(p59_atparto,4,5,6,7,8) & p25_sexo==1
-
-* No privadas las mujeres que fueron atendidas por personal calificado y su parto no fue en los últimos 5 años 	
-replace priv_parto = 0 if ult5años==0 & inlist(p59_atparto,1,2,3) & p25_sexo==1
-
-* No privadas las mujeres menores a 15 y mayores a 59 años de edad 
-replace priv_parto = 0 if p25_sexo==1 & (p26_edad < 15 | p26_edad > 59) 
-
-replace priv_parto = 0 if p25_sexo==2
-
-replace priv_parto = 0 if p25_sexo==1 & p54_hvtot==0
-
-* 2) Variable a nivel hogar: 1 si al menos una persona del hogar en edad fértil que no fue atendida por personal de salus calificado
-
-cap drop priv_parto_hogar
-bysort i00: egen priv_parto_hogar = max(priv_parto)
-	
-* Crear labels
-label var priv_parto_hogar "Privación en atención en el parto (1=privado)"
-label define priv_parto_hogar_label 0 "No privación" 1 "Privación"
-label values priv_parto_hogar priv_parto_hogar_label
-
-* Revisar la tabulación
-tab priv_parto_hogar,m 
-           	 
-*--------------------------------------------------------------------------
-* 5. Embarazo adolescente  
-*--------------------------------------------------------------------------
-/*Desde 10 a 24 años
-Se utiliza el número de hijos nacidos vivos o muertos 
-Se utiliza los últimos 5 años
-*/
-
-* 1. Crear variable individual de embarazo adolescente reciente
-cap drop embarazo_ado_reciente
-gen embarazo_ado_reciente = .
-	
-* Privación si tuvo su primer hijo hasta los 19 años (embarazo adolescente) y fue en los últimos 5 años
-replace embarazo_ado_reciente = 1 if inrange(p26_edad, 12, 19) & (p54_hvtot>0 & p54_hvtot<=98) & ult5años == 1
-
-replace embarazo_ado_reciente = 1 if inrange(p26_edad, 12, 19) & (p54_hvtot==99 & p59_atparto!=9) & ult5años == 1
-
-* No privación si tuvo su primer hijo antes de los 19 años (embarazo adolescente) pero. fue hace más de 5 años
-replace embarazo_ado_reciente = 0 if inrange(p26_edad, 12, 19) & (p54_hvtot>0 & p54_hvtot<=98) & ult5años == 0
-
-replace embarazo_ado_reciente = 0 if inrange(p26_edad, 12, 19) & (p54_hvtot==99 & p59_atparto!=9) & ult5años == 0
-
-*&
-* Privación si tuvo su primer hijo hasta los 24 años que era adolescente al momento de su embarazo y fue en los últimos 5 años
-***Privación si tiene 24 al momento del Censo pero era adolescente al momento de su último parto: 
-
-replace embarazo_ado_reciente = 1 if p26_edad == 24 & (p54_hvtot>0 & p54_hvtot<=98) & ult5años == 1 & p57b_uhnacan<=2019
-
-replace embarazo_ado_reciente = 1 if p26_edad == 24 & (p54_hvtot==99 & p59_atparto!=9) & ult5años == 1 & p57b_uhnacan<=2019
-
-replace embarazo_ado_reciente = 0 if p26_edad == 24 & (p54_hvtot>0 & p54_hvtot<=98) & ult5años == 1 & p57b_uhnacan>2019
-
-replace embarazo_ado_reciente = 0 if p26_edad == 24 & (p54_hvtot==99 & p59_atparto!=9) & ult5años == 1 & p57b_uhnacan>2019
-
-*&
-***Privación si tiene 23 al momento del Censo pero era adolescente al momento de su último parto: 
-
-replace embarazo_ado_reciente = 1 if p26_edad == 23 & (p54_hvtot>0 & p54_hvtot<=98) & ult5años == 1 & p57b_uhnacan<=2020
-
-replace embarazo_ado_reciente = 1 if p26_edad == 23 & (p54_hvtot==99 & p59_atparto!=9) & ult5años == 1 & p57b_uhnacan<=2020
-
-replace embarazo_ado_reciente = 0 if p26_edad == 23 & (p54_hvtot>0 & p54_hvtot<=98) & ult5años == 1 & p57b_uhnacan>2020
-
-replace embarazo_ado_reciente = 0 if p26_edad == 23 & (p54_hvtot==99 & p59_atparto!=9) & ult5años == 1 & p57b_uhnacan>2020
-
-***Privación si tiene 22 al momento del Censo pero era adolescente al momento de su último parto: 
-
-replace embarazo_ado_reciente = 1 if p26_edad == 22 & (p54_hvtot>0 & p54_hvtot<=98) & ult5años == 1 & p57b_uhnacan<=2021
-
-replace embarazo_ado_reciente = 1 if p26_edad == 22 & (p54_hvtot==99 & p59_atparto!=9) & ult5años == 1 & p57b_uhnacan<=2021
-
-replace embarazo_ado_reciente = 0 if p26_edad == 22 & (p54_hvtot>0 & p54_hvtot<=98) & ult5años == 1 & p57b_uhnacan>2021
-
-replace embarazo_ado_reciente = 0 if p26_edad == 22 & (p54_hvtot==99 & p59_atparto!=9) & ult5años == 1 & p57b_uhnacan>2021
-
-***Privación si tiene 21 al momento del Censo pero era adolescente al momento de su último parto (no privacion si no era adolescente al momento del parto) 
-
-replace embarazo_ado_reciente = 1 if p26_edad == 21 & (p54_hvtot>0 & p54_hvtot<=98) & ult5años == 1 & p57b_uhnacan<=2022
-
-replace embarazo_ado_reciente = 1 if p26_edad == 21 & (p54_hvtot==99 & p59_atparto!=9) & ult5años == 1 & p57b_uhnacan<=2022
-
-replace embarazo_ado_reciente = 0 if p26_edad == 21 & (p54_hvtot>0 & p54_hvtot<=98) & ult5años == 1 & p57b_uhnacan>2022
-
-replace embarazo_ado_reciente = 0 if p26_edad == 21 & (p54_hvtot==99 & p59_atparto!=9) & ult5años == 1 & p57b_uhnacan>2022
-
-***Privación si tiene 20 al momento del Censo pero era adolescente al momento de su último parto (no privacion si no era adolescente al momento del parto) 
-
-replace embarazo_ado_reciente = 1 if p26_edad == 20 & (p54_hvtot>0 & p54_hvtot<=98) & ult5años == 1 & p57b_uhnacan<=2023
-
-replace embarazo_ado_reciente = 1 if p26_edad == 20 & (p54_hvtot==99 & p59_atparto!=9) & ult5años == 1 & p57b_uhnacan<=2023
-
-replace embarazo_ado_reciente = 0 if p26_edad == 20 & (p54_hvtot>0 & p54_hvtot<=98) & ult5años == 1 & p57b_uhnacan>2023
-
-replace embarazo_ado_reciente = 0 if p26_edad == 20 & (p54_hvtot==99 & p59_atparto!=9) & ult5años == 1 & p57b_uhnacan>2023
-
-* No privación si tuvo su primer hijo entre los 12 a 24 años (embarazo adolescente, ya que si tiene 24 hace 5 años tenia 19); sin embargo, fue hace más de 5 años
-replace embarazo_ado_reciente = 0 if inrange(p26_edad, 12, 24) & (p54_hvtot>0 & p54_hvtot<=98) & ult5años == 0
-
-replace embarazo_ado_reciente = 0 if inrange(p26_edad, 12, 24) & (p54_hvtot==99 & p59_atparto!=9) & ult5años == 0
-
-
-* No privación si la mujer no tuvo hijos y si está fuera del rango de edad analizado 
-replace embarazo_ado_reciente = 0 if p25_sexo == 1 & p54_hvtot == 0 
-replace embarazo_ado_reciente = 0 if p25_sexo == 1 & p26_edad<12
-replace embarazo_ado_reciente = 0 if p25_sexo == 1 & p26_edad>24
-replace embarazo_ado_reciente = . if p25_sexo == 1 & p54_hvtot == 9 & p59_atparto == 99
-
-* No privación si es hombre
-replace embarazo_ado_reciente = 0 if p25_sexo == 2	
-	  
-* 2. Colapsar a nivel hogar: al menos un caso en el hogar
-cap drop embarazo_adolescente_2024
-bysort i00: egen embarazo_adolescente_2024 = max(embarazo_ado_reciente)
-
-* Crear labels
-label var embarazo_adolescente_2024 "Privación por embarazo adolescente (1=privado)"
-label define embarazo_adolescente_2024_label 0 "No privación" 1 "Privación"
-label values embarazo_adolescente_2024 embarazo_adolescente_2024_label
-
-* Revisar la tabulación
-tab embarazo_adolescente_2024,m // 
-
-*--------------------------------------------------------------------------
-* 6. Educación
-*--------------------------------------------------------------------------
-*P38_ASISTE  38. Actualmente, asiste como estudiante a:
-*ASISTE      Asistencia educativa (residentes en el país y que respondieron a la pregunta)
-	
-* variable incluyendo residentes y no residentes
-*-----------------------------------------------*
-cap drop sin_asistencia
-gen sin_asistencia = .
-replace sin_asistencia = 1 if inrange(p26_edad, 6, 19) & p38_asiste == 8
-replace sin_asistencia = 0 if inrange(p26_edad, 6, 19) & inlist(p38_asiste,1,2,3,4,5,6,7)
-
-replace sin_asistencia = 0 if (p26_edad < 6 | p26_edad > 19) 
-
-cap drop asistencia_hogar
-bysort i00: egen asistencia_hogar = max(sin_asistencia)
-
-* Crear labels
-label var asistencia_hogar "Privación por analfabetismo (1=privado)"
-label define asistencia_hogar_label 0 "No privación" 1 "Privación"
-label values asistencia_hogar asistencia_hogar_label
-
-* Revisar la tabulación
-tab asistencia_hogar,m 
-
-*****************************************************************************
-* Dimensión: Recursos
-*****************************************************************************
-*--------------------------------------------------------------------------
-* 7. Agua potable
-*--------------------------------------------------------------------------
-*V07_AGUAPRO  7. Principalmente, el agua que usan en la vivienda proviene de:
+use "$out/persona_vivienda_censo_2024", clear
+
+********************************************************************************
+* FILTRAR VIVIENDAS PARTICULARES Y QUEDARSE CON UNA FILA POR VIVIENDA
+********************************************************************************
+keep if inrange(P01_TIPOVIV, 1, 5)
+bys I_BC_VIV: keep if _n == 1
+
+********************************************************************************
+* ETIQUETA GENERAL
+********************************************************************************
+cap label define priv_label 0 "No privado" 1 "Privado"
+
+********************************************************************************
+* TRATAMIENTO DE MISSING EN 2024
+********************************************************************************
 /*
-1 Cañería de red							No privado
-2 Pileta pública							No privado
-3 Cosecha de agua de lluvia					No privado 
-4 Pozo excavado o perforado con bomba		No privado	
-5 Pozo no protegido o sin bomba				Privado
-6 Manantial o vertiente protegida			No privado
-7 Rio, acequia o vertiente no protegida		Privado
-8 Carro repartidor (aguatero)				Privado *
-9 Otro"										Privado
-*/	
+El valor 9 corresponde a "No respondió" y se trata como missing.
+Esta categoría no existía en 2012.
+*/
 
-*V08_AGUADIST 8. El agua que usan en la vivienda se distribuye:
+foreach var in v19a_radio v19b_tv v19c_compu v19d_celular ///
+               v19e_inetfijo v19f_inetmovil v19h_telfijo {
+    replace `var' = . if `var' == 9
+}
+
+********************************************************************************
+* DIMENSIÓN 1: ENERGÍA BÁSICA
+********************************************************************************
+
+*---------------------------------------------------------------------------
+* INDICADOR 1: COMBUSTIBLE PARA COCINAR
+* Peso: 0.247
+*---------------------------------------------------------------------------
 /*
-1	Por cañería dentro de la vivienda		No privado
-2	Por cañería fuera de la vivienda, 
-	pero dentro del lote o terreno			No privado
-3	No se distribuye por cañería			Privado
+v10_combus – Principal combustible o energía para cocinar
+    1 Gas en garrafa              → NO PRIVADO
+    2 Gas por cañería (domicilio) → NO PRIVADO
+    3 Leña                        → PRIVADO
+    4 Guano, bosta o taquia       → PRIVADO
+    5 Electricidad                → NO PRIVADO
+    6 Energía solar               → NO PRIVADO
+    7 Otro                        → PRIVADO
+    8 No cocina                   → PRIVADO
+
+ATENCIÓN: categorías distintas a 2012.
+    2012: limpios={1,2,3,4} / 2024: limpios={1,2,5,6}
 */
 
-/* Definición del INE: en área urbana, se considera a la población que tiene acceso a agua por: Cañería de red dentro de la vivienda. Cañería de red fuera de la vivienda, pero dentro del lote o terreno. Pileta pública y cosecha de agua de lluvia*/
+cap drop dep_combustible
+gen dep_combustible = .
+replace dep_combustible = 0 if inlist(v10_combus, 1, 2, 5, 6)
+replace dep_combustible = 1 if inlist(v10_combus, 3, 4, 7, 8)
 
-cap drop agua_potable
-gen agua_potable=.
-replace agua_potable=0 if v07_aguapro==1 & inlist(v08_aguadist,1,2) & urbrur==1
-replace agua_potable=0 if v07_aguapro==2 & urbrur==1
-replace agua_potable=0 if v07_aguapro==3 & urbrur==1
+label var dep_combustible "Privación: usa combustible no limpio (1=privado)"
+label values dep_combustible priv_label
+tab dep_combustible, missing
 
-/* Definición del INE: en área rural el acceso a agua por cañería de red dentro de la vivienda, cañería de red fuera de la vivienda pero dentro del lote o terreno, pileta pública, Pozo excavado o perforado con bomba, cosecha de agua de lluvia y vertiente protegida */
-
-replace agua_potable=0 if v07_aguapro==1 & inlist(v08_aguadist,1,2) & urbrur==2
-replace agua_potable=0 if v07_aguapro==2 & urbrur==2
-replace agua_potable=0 if v07_aguapro==3 & urbrur==2
-replace agua_potable=0 if v07_aguapro==4 & urbrur==2
-replace agua_potable=0 if v07_aguapro==6 & urbrur==2
-
-/* Usando una pregunta, el resultado es el mismo
-cap drop agua_potable
-gen agua_potable=.
-replace agua_potable=0 if inlist(v07_aguapro,1,2,3) & urbrur==1
-replace agua_potable=0 if inlist(v07_aguapro,1,2,3,4,6) & urbrur==2
-*/
-
-replace agua_potable=1 if agua_potable==.
-
-* Crear labels
-label var agua_potable "Privación en agua mejorada (1=privado)"
-label define agua_potable_label 1 "Privado" 0 "No privado"
-label values agua_potable agua_potable_label
-
-* Revisar la tabulación
-tab agua_potable,m 
-
-*--------------------------------------------------------------------------
-* 8. Electricidad
-*--------------------------------------------------------------------------
-*V09_ENERGIA   9. De donde proviene la energía eléctrica que usan en la vivienda
-
-cap drop priv_electricidad  
-gen priv_electricidad = .
-replace priv_electricidad = 1 if inlist(v09_energia,5)
-replace priv_electricidad = 0 if inlist(v09_energia,1,2,3,4)
-	
-* Crear labels
-label var priv_electricidad "Privación en electricidad (1=privado)"
-label define priv_electricidad_label 0 "No privación" 1 "Privación"
-label values priv_electricidad priv_electricidad_label
-
-* Revisar la tabulación
-tab priv_electricidad, m 
-	
-*--------------------------------------------------------------------------
-* 9. Saneamiento básico
-*--------------------------------------------------------------------------
-*V15_SERVSAN   15. Tienen, baño o letrina
-*V16_DESAGUE   16. El baño o letrina tiene desagüe:
-
+*---------------------------------------------------------------------------
+* INDICADOR 2: CONTAMINACIÓN INTERIOR
+* Peso: 0.127
+*---------------------------------------------------------------------------
 /*
-1	Sí, usado solo por su hogar					No privada
-2	Sí, compartido con otros hogares			No privada
-3	No tiene									Privada
+v12_cocina – Tiene un cuarto sólo para cocinar
+    1 Sí → NO PRIVADO
+    2 No → PRIVADO
+
+Nota: En 2012 la categoría 2 era "No pertenece". El código es idéntico.
 */
 
-/* v16_desague:
-1	A la red de alcantarillado					No privado
-2	A una cámara séptica						No privado
-3	A un pozo ciego								No privado
-4	A un pozo de absorción						No privado
-5	A la superficie (calle, quebrada o río)		Privado
-6	Es baño ecológico							No privado
+cap drop dep_indoor
+gen dep_indoor = .
+replace dep_indoor = 0 if v12_cocina == 1
+replace dep_indoor = 1 if v12_cocina == 2
+
+label var dep_indoor "Privación: no tiene cuarto exclusivo para cocinar (1=privado)"
+label values dep_indoor priv_label
+tab dep_indoor, missing
+
+*---------------------------------------------------------------------------
+* INDICADOR 3: ACCESO A ELECTRICIDAD
+* Peso: 0.247
+*---------------------------------------------------------------------------
+/*
+v09_energia – De dónde proviene la energía eléctrica
+    1 Red de empresa eléctrica → NO PRIVADO
+    2 Panel solar              → NO PRIVADO
+    3 Generador/Turbina        → NO PRIVADO
+    4 Otra fuente              → NO PRIVADO
+    5 No tiene                 → PRIVADO
 */
 
-cap drop saneamiento
-gen saneamiento = .
+cap drop dep_electricidad
+gen dep_electricidad = .
+replace dep_electricidad = 0 if inlist(v09_energia, 1, 2, 3, 4)
+replace dep_electricidad = 1 if v09_energia == 5
 
-/* Definición del INE: en área urbana se considera a la población que tiene acceso a servicio de alcantarillado y baño ecológico (baño de compostaje) */ 
+label var dep_electricidad "Privación: no tiene acceso a electricidad (1=privado)"
+label values dep_electricidad priv_label
+tab dep_electricidad, missing
 
-replace saneamiento = 0 if inlist(v16_desague,1,6) & urbrur==1
+********************************************************************************
+* DIMENSIÓN 2: EQUIPAMIENTO
+********************************************************************************
 
-/* Definición del INE: en área rural el acceso a servicio de alcantarillado, cámara séptica, pozo de absorción, pozo ciego. y baño ecológico (baño de compostaje)*/
+*---------------------------------------------------------------------------
+* INDICADOR 4: ACCESO A ENTRETENIMIENTO
+* Peso: 0.147
+*---------------------------------------------------------------------------
+/*
+v19a_radio – El hogar tiene radio     (1=Sí, 2=No, 9→.)
+v19b_tv    – El hogar tiene televisor (1=Sí, 2=No, 9→.)
 
-replace saneamiento = 0 if inlist(v16_desague,1,2,3,4,6) & urbrur==2
+PRIVADO    si: no tiene TV ni radio
+NO PRIVADO si: tiene al menos uno
+*/
 
-replace saneamiento=1 if saneamiento==.
+cap drop dep_entretenimiento
+gen dep_entretenimiento = .
+replace dep_entretenimiento = 0 if v19a_radio == 1 | v19b_tv == 1
+replace dep_entretenimiento = 1 if v19a_radio == 2 & v19b_tv == 2
+replace dep_entretenimiento = . if missing(v19a_radio) & missing(v19b_tv)
 
-* Crear labels
-label var saneamiento "Privación de saneamiento mejorado (1=privado)"
-label define saneamiento_label 0 "No privación" 1 "Privación"
-label values saneamiento saneamiento_label
+label var dep_entretenimiento "Privación: no tiene TV ni radio (1=privado)"
+label values dep_entretenimiento priv_label
+tab dep_entretenimiento, missing
 
-* Revisar la tabulación
-tab saneamiento,m 
+********************************************************************************
+* DIMENSIÓN 3: COMUNICACIÓN
+********************************************************************************
 
-*****************************************************************************
-* Unifizar nombre de las variables
-*****************************************************************************
+*---------------------------------------------------------------------------
+* INDICADOR 5: ACCESO A COMUNICACIÓN BÁSICA
+* Peso: 0.147
+*---------------------------------------------------------------------------
+/*
+v19d_celular – El hogar tiene celular       (1=Sí, 2=No, 9→.)
+v19h_telfijo – El hogar tiene teléfono fijo (1=Sí, 2=No, 9→.)
 
-rename analfabetismo_hogar conanalfabeto2024
-rename sin_carnet_hogar sincarnet2024
-rename priv_comunicacion sintelefono2024
-rename priv_parto_hogar sinaccesoasalud2024
-rename embarazo_adolescente_2024 conembarazoadolescente2024
-rename asistencia_hogar conjovenquenoestudia2024
-rename agua_potable sinaguapotable2024
-rename priv_electricidad sinelectricidad2024
-rename saneamiento sinsaneamientobasico2024
+En 2024 separadas. En 2012 era una sola: P17E_TELEF.
+PRIVADO    si: no tiene celular ni teléfono fijo
+NO PRIVADO si: tiene al menos uno
+*/
 
-*****************************************************************************
-* Crear variables en base a la vivienda
-*****************************************************************************
+cap drop dep_comunicacion
+gen dep_comunicacion = .
+replace dep_comunicacion = 0 if v19d_celular == 1 | v19h_telfijo == 1
+replace dep_comunicacion = 1 if v19d_celular == 2 & v19h_telfijo == 2
+replace dep_comunicacion = . if missing(v19d_celular) & missing(v19h_telfijo)
 
-*Guardar copia de respaldo
-save "$out/base_individual_original", replace
+label var dep_comunicacion "Privación: no tiene celular ni teléfono (1=privado)"
+label values dep_comunicacion priv_label
+tab dep_comunicacion, missing
 
-use "$out/base_individual_original", clear 
+*---------------------------------------------------------------------------
+* INDICADOR 6: ACCESO DIGITAL
+* Peso: 0.085
+*---------------------------------------------------------------------------
+/*
+v19c_compu     – El hogar tiene computadora    (1=Sí, 2=No, 9→.)
+v19e_inetfijo  – El hogar tiene internet fijo  (1=Sí, 2=No, 9→.)
+v19f_inetmovil – El hogar tiene internet móvil (1=Sí, 2=No, 9→.)
 
-* Crear una observación a nivel de vivienda
-collapse (max) conanalfabeto2024 sincarnet2024 sintelefono2024 sinaccesoasalud2024 conembarazoadolescente2024 conjovenquenoestudia2024 sinaguapotable2024 sinelectricidad2024 sinsaneamientobasico2024 mun_res_cod urbrur dep_res_cod codm, by(i00)
+En 2024 el internet se desagrega en fijo y móvil. En 2012 era P17D_INTERNET.
+El hogar tiene internet si tiene fijo OR móvil.
+NO PRIVADO si: tiene computadora Y cualquier tipo de internet.
+PRIVADO    si: no tiene computadora O no tiene internet de ningún tipo.
+*/
 
-save "$out/base_vivienda_collapse", replace
+cap drop tiene_internet dep_digital
+gen tiene_internet = .
+replace tiene_internet = 1 if v19e_inetfijo == 1 | v19f_inetmovil == 1
+replace tiene_internet = 0 if v19e_inetfijo == 2 & v19f_inetmovil == 2
+replace tiene_internet = . if missing(v19e_inetfijo) & missing(v19f_inetmovil)
 
-use "$out/base_vivienda_collapse", clear 
+gen dep_digital = .
+replace dep_digital = 0 if v19c_compu == 1 & tiene_internet == 1
+replace dep_digital = 1 if v19c_compu == 2 | tiene_internet == 0
+replace dep_digital = . if missing(v19c_compu) | missing(tiene_internet)
+drop tiene_internet
 
-* Guardar en CSV (compatible con Excel)
-export delimited using "$out/base_vivienda_collapse.csv", replace
+label var dep_digital "Privación: no tiene computadora con internet (1=privado)"
+label values dep_digital priv_label
+tab dep_digital, missing
 
- 
-*****************************************************************************
-* Definir los pesos de los indicadores
-*****************************************************************************
-global indicadores "conanalfabeto2024 sincarnet2024 sintelefono2024 sinaccesoasalud2024 conembarazoadolescente2024 conjovenquenoestudia2024 sinaguapotable2024 sinelectricidad2024 sinsaneamientobasico2024"
+********************************************************************************
+* GUARDAR BASE A NIVEL VIVIENDA CON INDICADORES
+********************************************************************************
 
-foreach var of global indicadores{
-capture drop w_`var'
-	gen	w_`var' = 1/9
-	lab var w_`var' "Peso `var'"
+rename I02_DEPTO dep_res_cod
+rename I03_PROV  prov_cod
+rename URBRUR    urbrur
+
+order I_BC_VIV ID_INE_CENSO_MUN urbrur dep_res_cod prov_cod URBRUR_P ///
+      dep_combustible dep_indoor dep_electricidad    ///
+      dep_entretenimiento dep_comunicacion dep_digital
+
+save "$out/base_vivienda_ipem_2024.dta", replace
+
+********************************************************************************
+* PESOS DEL IPEM (idénticos a 2012 para garantizar comparabilidad)
+********************************************************************************
+
+global w_combustible     = 0.247
+global w_indoor          = 0.127
+global w_electricidad    = 0.247
+global w_entretenimiento = 0.147
+global w_comunicacion    = 0.147
+global w_digital         = 0.085
+
+********************************************************************************
+* PRIVACIONES PONDERADAS (g0)
+********************************************************************************
+
+foreach ind in combustible indoor electricidad ///
+               entretenimiento comunicacion digital {
+    cap drop g0_`ind'
+    gen g0_`ind' = dep_`ind' * ${w_`ind'}
+    label var g0_`ind' "Privación ponderada: `ind'"
 }
 
-*****************************************************************************
-* Matriz de privaciones 
-*****************************************************************************
-  
-foreach var in conanalfabeto2024 sincarnet2024 sintelefono2024 sinaccesoasalud2024 conembarazoadolescente2024 conjovenquenoestudia2024 sinaguapotable2024 sinelectricidad2024 sinsaneamientobasico2024{	
-	cap drop g0_w_`var'
-	gen	g0_w_`var' = `var' * w_`var'
-	lab var g0_w_`var' "Privación ponderada de `var'"
-	}
-	
-*****************************************************************************  Definir vector de conteo (ci)
-*****************************************************************************
-egen c_vector = rowtotal(g0_w_*)
-lab var c_vector "Vector de conteo"
-tab	c_vector , m
+********************************************************************************
+* VECTOR DE CONTEO (c_i)
+********************************************************************************
 
-****************************************************************************
-* Cantidad de Pobres Multidimensionales: MANUAL con k = 0.33 (3 dimensiones)
-****************************************************************************
+cap drop c_vector
+egen c_vector = rowtotal(g0_combustible g0_indoor g0_electricidad ///
+                          g0_entretenimiento g0_comunicacion g0_digital)
+label var c_vector "Puntaje de privación ponderada (0-1)"
+tab c_vector, missing
 
-*  Identificar los hogares pobres multidimensionales
-gen _mpi_h = 1		if c_vector >= 0.33 & c_vector != . /* Punto de corte */
-gen _mpi_e = 1      if c_vector >= 0.44 & c_vector != . /* Punto de corte IPM_extremo*/
+********************************************************************************
+* IDENTIFICACIÓN DE POBRES ENERGÉTICOS: k = 0.30
+********************************************************************************
 
-replace _mpi_h = 0	if c_vector < 0.33
-count if _mpi_h==1
+cap drop _ipem_h _ipem_e _ipem_m0 _ipem_a
 
-* Calcular privaciones ponderadas
-gen _mpi_m0 = c_vector 	
-replace _mpi_m0 = 0 if _mpi_h == 0
+gen _ipem_h  = (c_vector >= 0.30) if !missing(c_vector)
+gen _ipem_e  = (c_vector >= 0.70) if !missing(c_vector)
+gen _ipem_m0 = c_vector * _ipem_h
+gen _ipem_a  = c_vector if _ipem_h == 1
 
-gen _mpi_a = c_vector if _mpi_h == 1
-
-* Calcular la incidencia (H) // 				corte >=0.33
-count if _mpi_h == 1
-local q = r(N)
-count if c_vector != .
-local n = r(N)
-local H = (`q' / `n') * 100
-
-* Calcular la incidencia extrema (H) // 		corte >=0.44
-count if _mpi_e == 1
-local qe = r(N)
-count if c_vector != .
-local n = r(N)
-local He = (`qe' / `n') * 100
-
-* Calcular la intensidad (A)
-summarize _mpi_a
-local A = r(mean) * 100
-
-* Calcular el índice de pobreza multidimensional (MPI)
-local MPI = (`H' * `A') / 100
-
-* Mostrar resultados
-display "--------------------------------------------"
-display "Índice de Pobreza Multidimensional (nivel nacional)"
-display "--------------------------------------------"
-display "Incidencia (H): " %6.2f `H' " %"		//
-display "Incidencia (He): " %6.2f `He' " %"     // 
-display "Intensidad (A): " %6.2f `A' " %"		// 
-display "MPI (H × A / 100): " %6.3f `MPI'		// 
-display "--------------------------------------------"
-
-
-****************************************************************************
-* Generación de Tablas: MEDIDAS H, A, M0, V, S (por municipios)
-****************************************************************************
-
-***************************************************************
-* Calcular MPI por municipio con k = 0.33
-***************************************************************
-
-preserve
-
-gen uno = 1
-
-collapse ///
-    (mean) H =_mpi_h ///
-	(mean) A=_mpi_a ///
-    (count) hogares = uno ///
-    , by(codm)
-
-gen MPI = H * A
-
-label var H   "Incidencia multidimensional (H)"
-label var A   "Intensidad (A)"
-label var MPI "Índice de Pobreza Multidimensional (MPI)"
-label var hogares "Número de hogares"
-
-sort codm 
-
-save "$out/ipm_municipal_2024.dta", replace
-export delimited using "$out/mpi_municipal_2024.csv", replace
-export excel using "$out/mpi_municipal_2024.xlsx", replace firstrow(variables)
-
-restore
-
-****************************************************************************
-* Porcentaje de privaciones por indicador (por municipios)
-****************************************************************************
-
-foreach var of global indicadores {
-    bys codm: egen total_`var' = total(`var')
-    bys codm: egen total_hogares = total(!missing(`var'))
-	gen can_`var' = total_`var'
-    gen prop_`var' = (total_`var'/total_hogares)*100
-    label var prop_`var' "Proporción de hogares con `var' (%)"
-    drop total_`var' total_hogares
-}
-
-preserve
-collapse (mean) prop_*, by(codm)
-foreach var of varlist prop_* {
-    replace `var' = round(`var',0.01)
-}
-sort codm
-
-restore
-
-* Guardar en CSV (compatible con Excel)
-export delimited using "$out/prop_municipal_2024.csv", replace
-* Exporta el CSV indicando que use punto decimal sin separadores de miles
-export delimited using "$out/prop_municipal_2024.csv", replace nolabel
-restore
-
+label var _ipem_h  "Hogar pobre energético (k=0.30)"
+label var _ipem_e  "H"
