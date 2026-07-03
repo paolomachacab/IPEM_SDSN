@@ -32,7 +32,7 @@ vivienda, no de persona. Por tanto no se necesita agregar variables
 desde nivel persona. Se elimina el duplicado de personas por vivienda
 manteniendo solo la primera observación de cada una.
 */
-
+fgfdgd
 keep if inrange(P01_TIPOVIV, 1, 5)
 bys I_BC_VIV: keep if _n == 1
 
